@@ -5,14 +5,16 @@ Copyright © 2022 Corey Quinn corey@lastweekinaws.com
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
+	"time"
 
 	"github.com/cavaliergopher/grab/v3"
+	backoff "github.com/cenkalti/backoff/v4"
 	"github.com/spf13/cobra"
 )
 
@@ -26,12 +28,18 @@ var downloadCmd = &cobra.Command{
 		camUrl, _ := cmd.Flags().GetString("url")
 		output, _ := cmd.Flags().GetString("output")
 		delete, _ := cmd.Flags().GetBool("delete")
-		files, err := http.Get("http://" + camUrl + "/DCIM/A001")
+		timeout, _ := cmd.Flags().GetDuration("timeout")
+		retry, _ := cmd.Flags().GetDuration("retry-interval")
+
+		ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
+		defer cancel()
+
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+camUrl+"/DCIM/A001", nil)
+		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			fmt.Print(err.Error())
-			os.Exit(1)
+			log.Fatal(err)
 		}
-		responseData, err := ioutil.ReadAll(files.Body)
+		responseData, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -41,7 +49,11 @@ var downloadCmd = &cobra.Command{
 			Files []string `json:"files"`
 		}
 		var recordings Recordings
-		json.Unmarshal([]byte(responseData), &recordings)
+		err = json.Unmarshal(responseData, &recordings)
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		for f := range recordings.Files {
 			fmt.Println(recordings.Files[f])
 			source := "http://" + camUrl + "/DCIM/A001/" + recordings.Files[f]
@@ -50,30 +62,45 @@ var downloadCmd = &cobra.Command{
 			response codes, other times it speaks out of turn. "Fail and retry"
 			is sloppy, and yet here we are. I hate this so much.
 			*/
-			for i := 0; i < 10; i++ {
-
-				resp, err := grab.Get(output, source)
+			err = backoff.Retry(
+				GetOperation(ctx, output, source),
+				backoff.WithContext(backoff.NewConstantBackOff(retry), ctx))
+			if err != nil {
+				log.Fatal(err)
+			}
+			if delete {
+				_, err := http.Get(source + "?act=rm")
 				if err != nil {
-					if i >= 9 {
-						log.Fatal(err)
-					}
-				} else {
-					i = 10
-
-					if delete {
-						http.Get(source + "?act=rm")
-					}
-					fmt.Println("Download saved to", resp.Filename)
-					break
+					log.Printf("Error deleting %s", source)
 				}
 			}
 		}
 	},
 }
 
+// GetOperation returns a retryable Operation to download a file
+func GetOperation(ctx context.Context, output, source string) backoff.Operation {
+	return func() error {
+		req, err := grab.NewRequest(output, source)
+		if err != nil {
+			return err
+		}
+		req = req.WithContext(ctx)
+
+		resp := grab.DefaultClient.Do(req)
+		if resp.Err() != nil {
+			return resp.Err()
+		}
+
+		fmt.Println("Download saved to", resp.Filename)
+		return nil
+	}
+}
+
 func init() {
 	downloadCmd.Flags().StringP("output", "o", "", "Directory to download into")
 	downloadCmd.Flags().Bool("delete", false, "Delete files after download")
+	downloadCmd.Flags().Duration("retry-interval", time.Second*2, "Time between retries")
+	downloadCmd.Flags().DurationP("timeout", "t", time.Second*20, "Timeout to cancel the command")
 	rootCmd.AddCommand(downloadCmd)
-
 }
