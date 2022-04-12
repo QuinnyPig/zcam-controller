@@ -14,3 +14,7 @@ Ideally this is useful for someone besides me.
 A `-u` or `--url` flag is required, and it expects either an IP address or a resolvable hostname for the z-cam. 
 
 Putting it all together, `./zcam-controller -u 192.168.1.128 -o "/tmp" download --delete` is what a command looks like.
+
+## Caveats
+
+If you're going to call this from a Stream Deck, you're in for a "fun" time. It doesn't support arguments to binaries, so you get to wrap it with an executable shell script--then set the System -> Open action to call that shell script instead of the binary directly.
