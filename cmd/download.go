@@ -28,13 +28,10 @@ var downloadCmd = &cobra.Command{
 		camUrl, _ := cmd.Flags().GetString("url")
 		output, _ := cmd.Flags().GetString("output")
 		delete, _ := cmd.Flags().GetBool("delete")
-		timeout, _ := cmd.Flags().GetDuration("timeout")
+		retries, _ := cmd.Flags().GetInt("retries")
 		retry, _ := cmd.Flags().GetDuration("retry-interval")
 
-		ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
-		defer cancel()
-
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+camUrl+"/DCIM/A001", nil)
+		req, _ := http.NewRequestWithContext(cmd.Context(), http.MethodGet, "http://"+camUrl+"/DCIM/A001", nil)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			log.Fatal(err)
@@ -63,8 +60,8 @@ var downloadCmd = &cobra.Command{
 			is sloppy, and yet here we are. I hate this so much.
 			*/
 			err = backoff.Retry(
-				GetOperation(ctx, output, source),
-				backoff.WithContext(backoff.NewConstantBackOff(retry), ctx))
+				GetOperation(cmd.Context(), output, source),
+				backoff.WithMaxRetries(backoff.NewConstantBackOff(retry), uint64(retries)))
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -101,6 +98,6 @@ func init() {
 	downloadCmd.Flags().StringP("output", "o", "", "Directory to download into")
 	downloadCmd.Flags().Bool("delete", false, "Delete files after download")
 	downloadCmd.Flags().Duration("retry-interval", time.Second*2, "Time between retries")
-	downloadCmd.Flags().DurationP("timeout", "t", time.Second*20, "Timeout to cancel the command")
+	downloadCmd.Flags().Int("retries", 10, "Max retries per file")
 	rootCmd.AddCommand(downloadCmd)
 }
