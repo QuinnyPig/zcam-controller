@@ -5,6 +5,10 @@ all: build
 build:
 	go build
 
+.PHONY: install
+install:
+	cp zcam-controller /usr/local/bin/
+
 .PHONY: test
 test:
 	go test -coverprofile=coverage.out -timeout=20s -v ./...

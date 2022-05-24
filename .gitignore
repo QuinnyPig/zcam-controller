@@ -1,3 +1,5 @@
 coverage.out
 zcam-controller
 .DS_Store
+*.MOV
+*.MP4
