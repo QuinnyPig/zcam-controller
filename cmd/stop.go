@@ -1,6 +1,5 @@
 /*
 Copyright © 2022 Corey Quinn corey@lastweekinaws.com
-
 */
 package cmd
 
@@ -22,6 +21,17 @@ var stopCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("stop called")
 		camUrl, _ := cmd.Flags().GetString("url")
+		ledresponse, err := http.Get("http://" + camUrl + "/ctrl/set?led=Off")
+		if err != nil {
+			fmt.Print(err.Error())
+			os.Exit(1)
+		}
+
+		ledresponseData, err := ioutil.ReadAll(ledresponse.Body)
+		if err != nil {
+			log.Fatal(err)
+		}
+		_ = ledresponseData
 		response, err := http.Get("http://" + camUrl + "/ctrl/rec?action=stop")
 		if err != nil {
 			fmt.Print(err.Error())
